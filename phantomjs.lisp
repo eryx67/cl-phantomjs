@@ -6,7 +6,7 @@
 (defvar *cookies-file* (merge-pathnames #p".phjs.cookies"
                                         (user-homedir-pathname)))
 (defvar *scripts-path* (merge-pathnames
-                        #p"js/"
+                        #p"deps/js/"
                         (asdf:system-source-directory :phantomjs)))
 (defvar *config-file* #p"config.js")
 (defvar *response-prefix* "$phjs> ")
