@@ -118,7 +118,8 @@
     (inject-file self (pathname out))))
 
 (ps:defpsmacro phjs-send (msg)
-  `(console.log (+ ,*response-prefix* (btoa (ps:chain *json* (stringify ,msg))))))
+  `(console.log (+ ,*response-prefix* (ps:chain (require "base64")
+                                                (encode (ps:chain *json* (stringify ,msg)))))))
 
 (defmacro wrap-ps (&body body)
   `(ps:ps (funcall (lambda () ,@body))))
@@ -240,4 +241,4 @@ Returns FIXME."
   (cl-base64:string-to-base64-string str))
 
 (defun phantomjs-decode-response (str)
-  (yason:parse (cl-base64:base64-string-to-string str)))
+  (yason:parse (babel:octets-to-string (cl-base64:base64-string-to-usb8-array str))))
