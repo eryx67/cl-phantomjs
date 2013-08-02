@@ -1,6 +1,9 @@
 (in-package #:phantomjs)
 
 (defvar *phantomjs-bin* #p"/usr/bin/phantomjs")
+(defvar *slimerjs-bin* (truename (merge-pathnames
+                                  #p"../slimerjs-nightly/slimerjs"
+                                  (asdf:system-source-directory :phantomjs))))
 (defvar *debugp* t)
 (defvar *phantomjs-default-args* (list "--debug=true"))
 (defvar *cookies-file* (merge-pathnames #p".phjs.cookies"
@@ -59,11 +62,12 @@
   (:export-accessor-names-p t)
   (:export-class-name-p t))
 
-(defmethod instance-start ((self phantomjs-instance) &key cmd-args)
+(defmethod instance-start ((self phantomjs-instance)
+                           &key (engine :phantomjs) cmd-args)
   (loop
      for startp = t then nil
      for port = (port-of self) then (next-portnum)
-     for proc = (phantomjs-server port cmd-args)
+     for proc = (phantomjs-server port engine cmd-args)
      when (and (not startp) (= port (port-of self)))
      do (error 'instance-error :message "Can't allocate port")
      while (not proc)
@@ -124,7 +128,7 @@
 (defmacro wrap-ps (&body body)
   `(ps:ps (funcall (lambda () ,@body))))
 
-(defmacro with-phantomjs ((var &key cmd-args) &body body)
+(defmacro with-phantomjs ((var &rest instance-args) &body body)
   "Helper for PhantomJS.
   `VAR` -- PhantomJS instance variable.
   Special forms used in macro are `RECEIVE` and `CALL`.
@@ -132,27 +136,26 @@
   `RECEIVE -- (RECEIVE (VAR MSG-VAR &KEY (TIMEOUT 5) (ONCEP NIL)) &BODY BODY)
   If not `ONCEP` body is called repeatedly before `TIMEOUT` occur.
   (RETURN-FROM-RECEIVE VAL) can be used in this case to exit receive loop."
-  (once-only (cmd-args)
-    (with-unique-names (srv)
-      `(let* ((,srv (make-instance 'phantomjs-instance))
-              (,var ,srv))
-         (instance-start ,srv :cmd-args ,cmd-args)
-         (macrolet ((call (srv script)
-                      `(instance-call ,srv ,script))
-                    (receive ((srv msg-var &rest args) &body body)
-                      (with-unique-names (receive-block)
-                        `(block ,receive-block
-                           (flet ((return-from-receive (val)
-                                    (return-from ,receive-block val)))
-                             (instance-receive ,srv
-                                               #'(lambda (,msg-var) ,@body)
-                                               ,@args))))))
-           (unwind-protect
-                (progn
-                  ,@body)
-             (instance-stop ,srv)))))))
+  (with-unique-names (srv)
+    `(let* ((,srv (make-instance 'phantomjs-instance))
+            (,var ,srv))
+       (instance-start ,srv ,@instance-args)
+       (macrolet ((call (srv script)
+                    `(instance-call ,srv ,script))
+                  (receive ((srv msg-var &rest args) &body body)
+                    (with-unique-names (receive-block)
+                      `(block ,receive-block
+                         (flet ((return-from-receive (val)
+                                  (return-from ,receive-block val)))
+                           (instance-receive ,srv
+                                             #'(lambda (,msg-var) ,@body)
+                                             ,@args))))))
+         (unwind-protect
+              (progn
+                ,@body)
+           (instance-stop ,srv))))))
 
-(defun phantomjs-server (port cmd-args)
+(defun phantomjs-server (port engine cmd-args)
   "Run a phantomjs process with a webserver on `PORT`.
 
 The webserver running on `PORT` is used to send commands to the
@@ -168,7 +171,7 @@ Returns `EXTERNAL-PROGRAM:PROCESS`."
                                                                 *scripts-path*))
                                    (format nil "~a" port)
                                    (namestring (cl-fad:pathname-as-file *scripts-path*))))))
-    (phantomjs-start start-args)))
+    (phantomjs-start engine start-args)))
 
 (defun phantomjs-read-response (proc)
   (loop
@@ -183,14 +186,17 @@ Returns `EXTERNAL-PROGRAM:PROCESS`."
                      (string-equal *response-prefix* str-prefix)))
      finally (return (subseq str prefix-len))))
 
-(defun phantomjs-start (args)
+(defun phantomjs-start (engine args)
   "Run phantomjs process. Returns `PROCESS`.
  SCRIPTS is a list of scripts to be passed to the process."
-  (let* ((args (append
-                (when *cookies-file
+  (let* ((binary (ecase engine
+                   (:phantomjs *phantomjs-bin*)
+                   (:slimerjs *slimerjs-bin*)))
+         (args (append
+                (when *cookies-file*
                   (list (format nil "--cookies-file=~a" *cookies-file*)))
                 (append *phantomjs-default-args* args)))
-         (proc (external-program:start *phantomjs-bin* args
+         (proc (external-program:start binary args
                                        :status-hook #'instance-sentinel
                                        :input t
                                        :output :stream
@@ -220,7 +226,9 @@ Returns FIXME."
         (drakma:http-request (puri:parse-uri (format nil "http://localhost:~a" port))
                              :additional-headers headers)
       (let ((body-str (and body
-                           (babel:octets-to-string body :encoding :utf-8))))
+                           (if (stringp body)
+                               body
+                               (babel:octets-to-string body :encoding :utf-8)))))
         (case status-code
           (200 (values body-str t))
           (t (values body-str nil))
