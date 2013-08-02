@@ -1,9 +1,9 @@
 (in-package #:phantomjs)
 
 (defvar *phantomjs-bin* #p"/usr/bin/phantomjs")
-(defvar *slimerjs-bin* (truename (merge-pathnames
-                                  #p"../slimerjs-nightly/slimerjs"
-                                  (asdf:system-source-directory :phantomjs))))
+(defvar *slimerjs-bin* (ignore-errors (truename (merge-pathnames
+                                                 #p"../slimerjs-nightly/slimerjs"
+                                                 (asdf:system-source-directory :phantomjs)))))
 (defvar *debugp* t)
 (defvar *phantomjs-default-args* (list "--debug=true"))
 (defvar *cookies-file* (merge-pathnames #p".phjs.cookies"
