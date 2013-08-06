@@ -84,7 +84,7 @@
                                  (declare (ignore fd))
                                  (funcall handler
                                           (phantomjs-decode-response
-                                           (phantomjs-read-response (proc-of self))))))
+                                           (phantomjs-read-response in)))))
       (if oncep
           (sb-sys:serve-event timeout)
           (loop
@@ -173,13 +173,15 @@ Returns `EXTERNAL-PROGRAM:PROCESS`."
                                    (namestring (cl-fad:pathname-as-file *scripts-path*))))))
     (phantomjs-start engine start-args)))
 
-(defun phantomjs-read-response (proc)
+(defun phantomjs-read-response (in)
   (loop
      with prefix-len = (length *response-prefix*)
-     with in = (external-program:process-output-stream proc)
-     for str = (read-line in)
-     for str-prefix = (when (> (length str) prefix-len)
+     for str = (read-line in nil nil)
+     for str-prefix = (when (and str
+                                 (> (length str) prefix-len))
                         (subseq str 0 prefix-len))
+     unless str do
+       (error 'instance-error :message "Read response" :value :eof)
      when *debugp* do
        (format *error-output* "~&phantomjs=>~a~%" str)
      while (not (and str-prefix
@@ -202,7 +204,7 @@ Returns `EXTERNAL-PROGRAM:PROCESS`."
                                        :output :stream
                                        :error t)))
     (loop
-       for resp = (phantomjs-read-response proc)
+       for resp = (phantomjs-read-response (external-program:process-output-stream proc))
        while (not (member resp '("started" "failed") :test #'string-equal))
        finally (return (if (string-equal resp "started")
                            proc
