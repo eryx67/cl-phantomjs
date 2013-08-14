@@ -88,7 +88,8 @@
       (if oncep
           (sb-sys:serve-event timeout)
           (loop
-             while (sb-sys:serve-event timeout))))))
+             while (sb-sys:serve-event timeout)
+             do (sleep 0.05))))))
 
 (defmethod instance-stop ((self phantomjs-instance))
   (when-let (proc (proc-of self))
