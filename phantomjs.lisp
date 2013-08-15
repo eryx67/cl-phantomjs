@@ -50,6 +50,7 @@
   (let ((status (external-program:process-status proc)))
     (when (not (eql :running status))
       (let ((pid (external-program:process-id proc)))
+        (ignore-errors (close (external-program:process-output-stream proc)))
         (format t "Process phantomjs ~a finished with status ~a~%"
                 pid status)
         (setf (proc-of (gethash pid *instances*)) nil)
